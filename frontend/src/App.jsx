@@ -1,6 +1,5 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 
-// ── API helpers ──────────────────────────────────────────────────────────────
 const API = "http://localhost:8000";
 
 async function fetchLivePrices(tickers) {
@@ -11,38 +10,43 @@ async function fetchLivePrices(tickers) {
   } catch { return {}; }
 }
 
-async function loadHoldings(token) {
-  const res = await fetch(`${API}/api/holdings`, { headers: { Authorization: `Bearer ${token}` } });
-  return await res.json();
+async function apiLoadHoldings() {
+  try {
+    const res = await fetch(`${API}/api/holdings`);
+    return await res.json();
+  } catch { return []; }
 }
 
-async function saveHolding(holding, token) {
+async function apiSaveHolding(holding) {
   const res = await fetch(`${API}/api/holdings`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(holding),
   });
   return await res.json();
 }
 
-async function deleteHolding(id, token) {
-  await fetch(`${API}/api/holdings/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+async function apiDeleteHolding(id) {
+  await fetch(`${API}/api/holdings/${id}`, { method: "DELETE" });
 }
 
-async function loadSettings(token) {
-  const res = await fetch(`${API}/api/settings`, { headers: { Authorization: `Bearer ${token}` } });
-  return await res.json();
+async function apiLoadSettings() {
+  try {
+    const res = await fetch(`${API}/api/settings`);
+    return await res.json();
+  } catch { return {}; }
 }
 
-async function saveSettings(data, token) {
-  await fetch(`${API}/api/settings`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(data),
-  });
+async function apiSaveSettings(data) {
+  try {
+    await fetch(`${API}/api/settings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  } catch {}
 }
 
-// ── Portfolio logic ───────────────────────────────────────────────────────────
 function scorePortfolio(holdings, prices, goal, weeklyDeposit) {
   if (!holdings.length) return { score: 0, breakdown: [], totalValue: 0, projected: 0, etfPct: 0, goalProgress: 0 };
   const getP = t => prices[t.toUpperCase()] || 0;
@@ -82,7 +86,6 @@ function getRecommendations(holdings, prices, weeklyDeposit) {
   return recs;
 }
 
-// ── Hooks ─────────────────────────────────────────────────────────────────────
 function useBlinkingCursor() {
   const [show, setShow] = useState(true);
   useEffect(() => { const t = setInterval(() => setShow(s => !s), 530); return () => clearInterval(t); }, []);
@@ -95,7 +98,6 @@ function useClock() {
   return time;
 }
 
-// ── Palette ───────────────────────────────────────────────────────────────────
 const A      = "#3d2e1a";
 const BRIGHT = "#1a1008";
 const DIM    = "#6b5540";
@@ -109,118 +111,7 @@ const BORDER = "#c8bfaa";
 const TOPBAR = "#ddd5c4";
 const ACTIVE = "#c4b89e";
 
-// ── Login Screen ──────────────────────────────────────────────────────────────
-function LoginScreen({ onAuth }) {
-  const [mode, setMode] = useState("login");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const cursor = useBlinkingCursor();
-  const clock = useClock();
-
-  async function handleSubmit() {
-    if (!username || !password) { setError("ALL FIELDS REQUIRED"); return; }
-    setLoading(true); setError("");
-    try {
-      const res = await fetch(`${API}/api/${mode}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.detail?.toUpperCase() || "ERROR"); setLoading(false); return; }
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("username", data.username);
-      onAuth(data.token, data.username);
-    } catch {
-      setError("CANNOT CONNECT TO SERVER");
-    }
-    setLoading(false);
-  }
-
-  const inp = {
-    background: "transparent", border: "none", borderBottom: `1px solid ${BORDER}`,
-    color: BRIGHT, fontFamily: "'Courier New', monospace", fontSize: "14px",
-    padding: "4px 2px", width: "100%", outline: "none", letterSpacing: "0.05em",
-  };
-
-  return (
-    <div style={{ background: BG, minHeight: "100vh", fontFamily: "'Courier New', monospace", color: A, display: "flex", flexDirection: "column" }}>
-      <style>{`* { box-sizing: border-box; margin: 0; padding: 0; } input::placeholder { color: ${GHOST}; }`}</style>
-
-      <div style={{ background: TOPBAR, borderBottom: `1px solid ${BORDER}`, padding: "2px 10px", display: "flex", justifyContent: "space-between", fontSize: "12px", letterSpacing: "0.07em" }}>
-        <span style={{ color: BRIGHT, fontWeight: "bold" }}>PORTFOLIO ANALYST</span>
-        <span style={{ color: DIM }}>SECURE LOGIN  //  MULTI-USER</span>
-        <span style={{ color: A }}>{clock.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "2-digit", year: "numeric" }).toUpperCase()}  {clock.toLocaleTimeString("en-US", { hour12: false })}</span>
-      </div>
-
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ width: "380px" }}>
-          <div style={{ border: `1px solid ${BORDER}`, background: PANEL, padding: "32px" }}>
-            <div style={{ fontSize: "10px", color: GHOST, letterSpacing: "0.15em", marginBottom: "24px", borderBottom: `1px solid ${BORDER}`, paddingBottom: "12px" }}>
-              {mode === "login" ? "USER AUTHENTICATION  //  ENTER CREDENTIALS" : "NEW ACCOUNT REGISTRATION  //  CHOOSE CREDENTIALS"}
-            </div>
-
-            <div style={{ marginBottom: "20px" }}>
-              <div style={{ fontSize: "10px", color: GHOST, letterSpacing: "0.1em", marginBottom: "6px" }}>USERNAME</div>
-              <input value={username} onChange={e => setUsername(e.target.value)} placeholder="E.G. LUCAS"
-                style={{ ...inp, textTransform: "uppercase" }}
-                onKeyDown={e => e.key === "Enter" && handleSubmit()} />
-            </div>
-
-            <div style={{ marginBottom: "28px" }}>
-              <div style={{ fontSize: "10px", color: GHOST, letterSpacing: "0.1em", marginBottom: "6px" }}>PASSWORD</div>
-              <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••"
-                style={inp}
-                onKeyDown={e => e.key === "Enter" && handleSubmit()} />
-            </div>
-
-            {error && <div style={{ fontSize: "11px", color: RED, marginBottom: "16px", letterSpacing: "0.06em" }}>ERROR: {error}</div>}
-
-            <button onClick={handleSubmit} disabled={loading}
-              style={{ background: TOPBAR, color: A, border: `1px solid ${A}`, padding: "10px", fontFamily: "'Courier New', monospace", fontSize: "12px", letterSpacing: "0.1em", cursor: "pointer", width: "100%", marginBottom: "16px" }}
-              onMouseEnter={e => e.target.style.background = ACTIVE}
-              onMouseLeave={e => e.target.style.background = TOPBAR}>
-              {loading ? "AUTHENTICATING..." : mode === "login" ? "LOGIN  //  ENTER SYSTEM" : "REGISTER  //  CREATE ACCOUNT"}
-            </button>
-
-            <div style={{ textAlign: "center", fontSize: "11px", color: GHOST }}>
-              {mode === "login" ? "NO ACCOUNT?  " : "HAVE AN ACCOUNT?  "}
-              <span onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}
-                style={{ color: A, cursor: "pointer", textDecoration: "underline" }}>
-                {mode === "login" ? "REGISTER" : "LOGIN"}
-              </span>
-            </div>
-          </div>
-          <div style={{ textAlign: "center", fontSize: "10px", color: GHOST, marginTop: "12px" }}>
-            PORTFOLIO ANALYST v1.0  //  {cursor}
-          </div>
-        </div>
-      </div>
-
-      <div style={{ background: TOPBAR, borderTop: `1px solid ${BORDER}`, padding: "3px 10px", fontSize: "10px", color: GHOST, display: "flex", justifyContent: "space-between" }}>
-        <span>PRESS ENTER TO SUBMIT</span>
-        <span>ALL DATA STORED LOCALLY  //  SECURED WITH JWT</span>
-      </div>
-    </div>
-  );
-}
-
-// ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
-  const [token, setToken] = useState(() => localStorage.getItem("token"));
-  const [username, setUsername] = useState(() => localStorage.getItem("username") || "");
-
-  function handleAuth(t, u) { setToken(t); setUsername(u); }
-  function handleLogout() { localStorage.removeItem("token"); localStorage.removeItem("username"); setToken(null); setUsername(""); }
-
-  if (!token) return <LoginScreen onAuth={handleAuth} />;
-  return <Portfolio token={token} username={username} onLogout={handleLogout} />;
-}
-
-// ── Portfolio ─────────────────────────────────────────────────────────────────
-function Portfolio({ token, username, onLogout }) {
   const [holdings, setHoldings] = useState([]);
   const [prices, setPrices] = useState({});
   const [loading, setLoading] = useState(false);
@@ -232,25 +123,27 @@ function Portfolio({ token, username, onLogout }) {
   const [newShares, setNewShares] = useState("");
   const [newType, setNewType] = useState("ETF");
   const [addingPrice, setAddingPrice] = useState(false);
-  const [nextId, setNextId] = useState(10);
   const [inputFocus, setInputFocus] = useState(null);
-  const [settingsReady, setSettingsReady] = useState(false);
+  const settingsReady = useRef(false);
   const cursor = useBlinkingCursor();
   const clock = useClock();
 
+  // Load holdings + settings on startup
   useEffect(() => {
-    loadHoldings(token).then(data => setHoldings(data));
-    loadSettings(token).then(s => {
+    apiLoadHoldings().then(data => setHoldings(Array.isArray(data) ? data : []));
+    apiLoadSettings().then(s => {
       if (s.goal) setGoal(s.goal);
       if (s.weeklyDeposit) setWeeklyDeposit(s.weeklyDeposit);
-      setSettingsReady(true);
+      settingsReady.current = true;
     });
-  }, [token]);
+  }, []);
 
+  // Save settings when changed — debounced, only after initial load
   useEffect(() => {
-    if (!settingsReady) return;
-    saveSettings({ goal, weeklyDeposit }, token);
-  }, [goal, weeklyDeposit, settingsReady]);
+    if (!settingsReady.current) return;
+    const t = setTimeout(() => apiSaveSettings({ goal, weeklyDeposit }), 500);
+    return () => clearTimeout(t);
+  }, [goal, weeklyDeposit]);
 
   const refreshPrices = useCallback(async (h) => {
     const tickers = (h || holdings).map(x => x.ticker);
@@ -265,15 +158,20 @@ function Portfolio({ token, username, onLogout }) {
   const recs = useMemo(() => getRecommendations(holdings, prices, weeklyDeposit), [holdings, prices, weeklyDeposit]);
 
   async function addHolding() {
-    if (!newTicker || !newShares) return;
+    if (!newTicker || !newShares || addingPrice) return;
     const ticker = newTicker.toUpperCase();
     setAddingPrice(true);
-    const saved = await saveHolding({ ticker, shares: parseFloat(newShares), type: newType }, token);
-    const updated = [...holdings, { ...saved, name: ticker }];
-    setHoldings(updated);
-    setNewTicker(""); setNewShares("");
-    const p = await fetchLivePrices(updated.map(x => x.ticker));
-    setPrices(p); setLoaded(true); setAddingPrice(false);
+    try {
+      const saved = await apiSaveHolding({ ticker, shares: parseFloat(newShares), type: newType });
+      if (saved.id) {
+        const updated = [...holdings, { ...saved, name: ticker }];
+        setHoldings(updated);
+        setNewTicker(""); setNewShares("");
+        const p = await fetchLivePrices(updated.map(x => x.ticker));
+        setPrices(p); setLoaded(true);
+      }
+    } catch {}
+    setAddingPrice(false);
   }
 
   const scoreLabel = analysis.score >= 8 ? "STRONG" : analysis.score >= 6 ? "ADEQUATE" : analysis.score >= 4 ? "DEVELOPING" : "WEAK";
@@ -304,13 +202,8 @@ function Portfolio({ token, username, onLogout }) {
       {/* TOP BAR */}
       <div style={{ background: TOPBAR, borderBottom: `1px solid ${BORDER}`, color: A, padding: "2px 10px", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "12px", letterSpacing: "0.07em" }}>
         <span style={{ color: BRIGHT, fontWeight: "bold" }}>PORTFOLIO ANALYST</span>
-        <span style={{ color: DIM }}>SHORT-TERM BALANCED MANDATE  //  {username.toUpperCase()}</span>
-        <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
-          <span style={{ color: A }}>{clock.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "2-digit", year: "numeric" }).toUpperCase()}  {clock.toLocaleTimeString("en-US", { hour12: false })}</span>
-          <span onClick={onLogout} style={{ color: RED, cursor: "pointer", fontSize: "11px", letterSpacing: "0.08em" }}
-            onMouseEnter={e => e.target.style.textDecoration = "underline"}
-            onMouseLeave={e => e.target.style.textDecoration = "none"}>LOGOUT</span>
-        </div>
+        <span style={{ color: DIM }}>SHORT-TERM BALANCED MANDATE  //  PERSONAL ACCOUNT</span>
+        <span style={{ color: A }}>{clock.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "2-digit", year: "numeric" }).toUpperCase()}  {clock.toLocaleTimeString("en-US", { hour12: false })}</span>
       </div>
 
       {/* SECONDARY BAR */}
@@ -374,7 +267,7 @@ function Portfolio({ token, username, onLogout }) {
 
           <div className="panel" style={{ padding: "12px 16px" }}>
 
-            {/* TAB 1 */}
+            {/* TAB 1 - PORTFOLIO */}
             {tab === 1 && (
               <div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1px", background: BORDER, border: `1px solid ${BORDER}`, marginBottom: "12px" }}>
@@ -403,7 +296,7 @@ function Portfolio({ token, username, onLogout }) {
                           <tr key={h.id} className="trow" style={{ borderBottom: `1px solid ${BORDER}` }}>
                             <td style={{ padding: "6px 10px", color: BRIGHT, fontWeight: "bold", letterSpacing: "0.08em", textAlign: "left" }}>
                               {h.ticker}
-                              <button onClick={() => { deleteHolding(h.id, token); setHoldings(p => p.filter(x => x.id !== h.id)); }}
+                              <button onClick={() => { apiDeleteHolding(h.id); setHoldings(p => p.filter(x => x.id !== h.id)); }}
                                 style={{ background: "none", border: "none", color: GHOST, cursor: "pointer", fontSize: "10px", marginLeft: "8px", fontFamily: "monospace" }}
                                 onMouseEnter={e => e.target.style.color = RED} onMouseLeave={e => e.target.style.color = GHOST}>DEL</button>
                             </td>
@@ -431,7 +324,7 @@ function Portfolio({ token, username, onLogout }) {
               </div>
             )}
 
-            {/* TAB 2 */}
+            {/* TAB 2 - GOALS */}
             {tab === 2 && (
               <div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
@@ -482,7 +375,7 @@ function Portfolio({ token, username, onLogout }) {
               </div>
             )}
 
-            {/* TAB 3 */}
+            {/* TAB 3 - ANALYSIS */}
             {tab === 3 && (
               <div>
                 <div style={{ border: `1px solid ${BORDER}`, background: PANEL, padding: "12px", marginBottom: "12px", display: "flex", gap: "20px", alignItems: "flex-start" }}>
@@ -520,7 +413,7 @@ function Portfolio({ token, username, onLogout }) {
               </div>
             )}
 
-            {/* TAB 4 */}
+            {/* TAB 4 - ADD HOLDING */}
             {tab === 4 && (
               <div>
                 <div style={{ border: `1px solid ${BORDER}`, background: PANEL, padding: "16px", maxWidth: "500px" }}>
